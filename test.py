@@ -6,9 +6,8 @@ import mailhelper
 import thread
 import math
 import random
-import PIL
+from PIL import Image
 from StringIO import StringIO
-from captcha_solver import CaptchaSolver
 
 from Crypto.Hash import MD5
 from Crypto.PublicKey import RSA
@@ -178,13 +177,9 @@ def fetchHdFax(yieldrate, days):
         except:
             pass
 
-def main():
-    #thread.start_new_thread(fetchHdFax, (6.0, 65))
+def getLoginData():
     page = requests.post('https://www.hdfax.com/encryption/getTpSecurityKeys')
     loginKeys = makeLoginParams(page.json())
-    
-    page = requests.post('https://www.hdfax.com/user/hasLoginPwd',{'phoneNumber':'18671403888'})
-    print(page.text)
     loginData = {
             'byTpk':loginKeys['byTpk'],
             'byKek':loginKeys['byKek'],
@@ -192,35 +187,51 @@ def main():
             'captchaCode':'',
             'captchaToken':''
             }
-    loginData = {
-            'byTpk':'97d34fa4b07e45c51f72450901d7dabee4d3c123a7e1c954fb8304404af133170f82223ff484009208b79573e6bf02ee54026f2ce92dd34bb988503ddab65ac6fde9b090f08a811c96d9e5775ca54a4093badbce98f88dfff51a67b7d6f73514ce4cb0423bb72fbf2bddb9aef5ad12c286720560217bbbcd06fa4fb89483ba583ecfab330be1ec5be9fd56fca5',
-            'byKek':'21071bbc8c329e051c08bbae30ac9cf37ac7d1067d060011433f8f61afa59cf1d02b8d96fc75e28969afad28cac3f5bd0e07ab8a2be85c266be9042ba8339c34251642682e6a44b02402b5f560fc4e8128e1e2c560d28d35a6505efc51157335df1a6573cc9dab38ad994a291ffb1cf6a1e8e422330e6f7bb9fbb557f922901b',
-            'phoneNumber':'18671403888',
-            'captchaCode':'',
-            'captchaToken':''
-            }
+    page = requests.post('https://www.hdfax.com/user/hasLoginPwd',{'phoneNumber':'18671403888'})
+    return loginData
+
+def testdata():
+    k3 = [137,214,203,218,246,119,79,223]
+    timestamp = "1518317739585"
+    tpk = "30818902818100ccd601e07aeffc7f5f6d20d841d75d7883d13cd0ea6a5557cd54b413a203e8fa6ea330e5d556fc8f0f22ef352969ac03153475dc9ce3cddd58a2a4e8ca373eac1811562eeec03a2ced54697a699f68de44aedb65bb49ec4acf4bdf502764a2a6e35bc539d66c373c5274f713cd72b97c0dd7b94b2791a82aa51fd5ddef3e0e850203010001"
+    kek = "308189028181009fa6334baf70c3361632221023e28ae6821ff762b9c1e30f07bb8140aaee181943f53a3417b8d240940c52ca5afe8b032dc17cffab331656f24d6a10ac83dd42bf57eec742e6b1062e55100860405b3ea4f03e8ad32aee86ee8d1c650fa02911f59f556dc95f2c7f05ce05a40f7b4b523e2b8c1be7a8d97591aab421237438730203010001"
+    bykek = "90b8ac39bc3d580b8a00c69f3df25ff341523a7ce86cf7990ea47032c482d84c28f71c25399988a6ce45021fa8c78937f55cffed524f0e5b9190d7b97460e0caf719d8fac21e1b7a9334ebb214c131a5f9a00fb10bc11aa2fc7ecd290964c809e1248582cdb405d9d4983b63946e4ab9a70e89f6f5551f14ce8414c2bb41cfcf"
+    bytpk = "87e0ec3ce65998e141d475f65e242502591375b760a909ed784b476765a789e52743a52dbdd61899faded598d2a2f589fac43ba6a098c0f6713ae49a91ef9162d1e286ec4d76691e7729cd731b192494a0a9b579007f6291dc5e2f6da2a4e77c09e140fe142d4dedffa8771ddea72aee41ec7c01c27d3f1cde254741613fc5674aa238103df69b2d37adfcba73"
+    return
+
+def main():
+    #thread.start_new_thread(fetchHdFax, (6.0, 65))
+    loginData = getLoginData()
     page = requests.post('https://www.hdfax.com/user/login', loginData)
     loginRet = page.json()
     print(loginRet)
-    if loginRet['code'] == '369997':
-        print(u'登录需要验证码')
+    while not loginRet['success']:
+        print(loginRet['msg'])
         imgData = requests.get('https://www.hdfax.com/captcha/apply')
         imgJson = imgData.json()
         data = base64.b64decode(imgJson['applyPicCaptchaResponse']['captcha'])
-        f = open("test.jpg","wb")
-        f.write(data)
-        f.close()
+        image = Image.open(StringIO(data))
+        img_L = image.convert("L")
+        for y in range(0,img_L.size[1]):
+            line = ""
+            for x in range(0,img_L.size[0]):
+                pix = img_L.getpixel((x,y))
+                if pix < 160:
+                    line += '*'
+                else:
+                    line += ' '
+            if line.find('*') > 0:
+                print(line)
 
-        solver = CaptchaSolver('rucaptcha', api_key='RUCAPTCHA_KEY')
-        print(solver.solve_captcha(data))
-
-        #f = open("test.jpg","wb")
-        #f.write(data)
-        #f.close()
-        #captchacode = captcha_decoder.decoder("test.jpg")
-        #print(captchacode)
-        #loginData['captchaToken'] = imgJson['captchaToken']
-        
+        captchacode = raw_input('captcha code:')
+        loginData = getLoginData()
+        loginData['captchaCode'] = captchacode
+        loginData['captchaToken'] = imgJson['applyPicCaptchaResponse']['captchaToken']
+        print(loginData)
+        page = requests.post('https://www.hdfax.com/user/login', loginData)
+        loginRet = page.json()
+        print(loginRet)
+ 
 
     #page = requests.get('https://www.hdfax.com/product/cashier/2/90207247')
     #print(page.text)
