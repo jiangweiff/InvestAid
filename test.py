@@ -65,9 +65,10 @@ traceNo:"mtp0a0800cf42173083631"
 useCustMsg:false
 """
 
-head = {
-}
-
+header = { "User-Agent" : "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.13 Safari/537.36",
+            "Host": "www.hdfax.com",
+           "Referer": "https://www.hdfax.com/"
+           }
 def randomByte():
     b = 0;
     for i in range(0,8):
@@ -85,7 +86,7 @@ def extractModulus(hexPubKey):
     if len(hexPubKey) != 280:
         return None
 	
-    modulus = hexPubKey[0:256]
+    modulus = hexPubKey[14:270]
     return modulus
 
 def extractExp(hexPublicKey):
@@ -154,12 +155,10 @@ def makeLoginParams(json):
     e2 = doRsa(secret, k2) # 128
     e2ts = mergeTs(e2, ts)  #141
     e3 = doRC4(e2ts, k3)
-    #print(len(e2), len(e2ts), len(e3))
     e1 = doRsa(k3, k1)
 
     byKek = binascii.b2a_hex(e1)
     byTpk = binascii.b2a_hex(e3)
-    #print(len(byKek),len(byTpk))
     return {'byKek':byKek,'byTpk':byTpk}
     
 
@@ -190,24 +189,19 @@ def getLoginData():
     page = requests.post('https://www.hdfax.com/user/hasLoginPwd',{'phoneNumber':'18671403888'})
     return loginData
 
-def testdata():
-    k3 = [137,214,203,218,246,119,79,223]
-    timestamp = "1518317739585"
-    tpk = "30818902818100ccd601e07aeffc7f5f6d20d841d75d7883d13cd0ea6a5557cd54b413a203e8fa6ea330e5d556fc8f0f22ef352969ac03153475dc9ce3cddd58a2a4e8ca373eac1811562eeec03a2ced54697a699f68de44aedb65bb49ec4acf4bdf502764a2a6e35bc539d66c373c5274f713cd72b97c0dd7b94b2791a82aa51fd5ddef3e0e850203010001"
-    kek = "308189028181009fa6334baf70c3361632221023e28ae6821ff762b9c1e30f07bb8140aaee181943f53a3417b8d240940c52ca5afe8b032dc17cffab331656f24d6a10ac83dd42bf57eec742e6b1062e55100860405b3ea4f03e8ad32aee86ee8d1c650fa02911f59f556dc95f2c7f05ce05a40f7b4b523e2b8c1be7a8d97591aab421237438730203010001"
-    bykek = "90b8ac39bc3d580b8a00c69f3df25ff341523a7ce86cf7990ea47032c482d84c28f71c25399988a6ce45021fa8c78937f55cffed524f0e5b9190d7b97460e0caf719d8fac21e1b7a9334ebb214c131a5f9a00fb10bc11aa2fc7ecd290964c809e1248582cdb405d9d4983b63946e4ab9a70e89f6f5551f14ce8414c2bb41cfcf"
-    bytpk = "87e0ec3ce65998e141d475f65e242502591375b760a909ed784b476765a789e52743a52dbdd61899faded598d2a2f589fac43ba6a098c0f6713ae49a91ef9162d1e286ec4d76691e7729cd731b192494a0a9b579007f6291dc5e2f6da2a4e77c09e140fe142d4dedffa8771ddea72aee41ec7c01c27d3f1cde254741613fc5674aa238103df69b2d37adfcba73"
-    return
-
 def main():
+    #testdata()
+    #return
     #thread.start_new_thread(fetchHdFax, (6.0, 65))
+    s = requests.session()  
+    
     loginData = getLoginData()
-    page = requests.post('https://www.hdfax.com/user/login', loginData)
-    loginRet = page.json()
+    response = s.post('https://www.hdfax.com/user/login', loginData, headers=header)
+    loginRet = response.json()
     print(loginRet)
     while not loginRet['success']:
         print(loginRet['msg'])
-        imgData = requests.get('https://www.hdfax.com/captcha/apply')
+        imgData = s.get('https://www.hdfax.com/captcha/apply')
         imgJson = imgData.json()
         data = base64.b64decode(imgJson['applyPicCaptchaResponse']['captcha'])
         image = Image.open(StringIO(data))
@@ -228,14 +222,16 @@ def main():
         loginData['captchaCode'] = captchacode
         loginData['captchaToken'] = imgJson['applyPicCaptchaResponse']['captchaToken']
         print(loginData)
-        page = requests.post('https://www.hdfax.com/user/login', loginData)
-        loginRet = page.json()
+        response = s.post('https://www.hdfax.com/user/login', loginData, headers=header)
+        loginRet = response.json()
         print(loginRet)
- 
+
+    page = s.post('https://www.hdfax.com/user/isLoginMtp', {'useCusMsg':0}, headers=header)
+    print(page.text)
+    page = s.post('https://www.hdfax.com/myasset/overview', headers=header)
+    print(page.text)
 
     #page = requests.get('https://www.hdfax.com/product/cashier/2/90207247')
     #print(page.text)
-    
-        
 
 main()
