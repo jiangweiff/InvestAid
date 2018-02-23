@@ -6,6 +6,7 @@ import mailhelper
 import thread
 import math
 import random
+import datetime
 from PIL import Image
 from StringIO import StringIO
 import hashlib
@@ -157,23 +158,8 @@ def makeLoginParams(password, json):
     byTpk = binascii.b2a_hex(e3)
     return {'byKek':byKek,'byTpk':byTpk}
     
-
-def fetchHdFax(yieldrate, days):
-    print("HDFax thread up")
-    records = {}
-    index = 1
-    while 1:
-        try:
-            page = requests.get('https://www.hdfax.com/myasset/overview')
-            if page.status_code >= 300:
-                print("request status error: "+page.status_code)
-                continue
-            print(page.text)
-        except:
-            pass
-
-def getLoginData(userid, password):
-    page = requests.post('https://www.hdfax.com/encryption/getTpSecurityKeys')
+def getLoginData(session, userid, password):
+    page = session.post('https://www.hdfax.com/encryption/getTpSecurityKeys')
     loginKeys = makeLoginParams(password, page.json())
     loginData = {
             'byTpk':loginKeys['byTpk'],
@@ -182,20 +168,46 @@ def getLoginData(userid, password):
             'captchaCode':'',
             'captchaToken':''
             }
-    page = requests.post('https://www.hdfax.com/user/hasLoginPwd',{'phoneNumber':userid})
+    page = session.post('https://www.hdfax.com/user/hasLoginPwd',{'phoneNumber':userid})
     return loginData
 
-def start(userid, password, pwd2):
-    #thread.start_new_thread(fetchHdFax, (6.0, 65))
+def processHdFax(session, yieldrate, endday):
+    print("HDFax thread up")
+    records = {}
+    index = 1
+    while 1:
+        try:
+            page = session.get('https://www.hdfax.com/financialproduct/secondaryMarket/list/%s?pageNum=%s&rateOrderBy=0&buyAmtOrderBy=0&productLimit=-1&productLimitOrderBy=1&buyAmtRange=-1'%(index, index))
+            if page.status_code >= 300:
+                print("request status error: "+page.status_code)
+                index = 1
+                continue
+            productData = page.json()
+            #print(productData)
+            if productData['hasNextPage']:
+                index = index+1
+            else:
+                index = 1
+            time.sleep(0.5)
+            productList = productData['productList']
+            for v in productList:
+                desc = '{0}, {1}, {2}'.format(v['productLimit'], v['investAmount'], v['expectedAnnualYieldRate'])
+                if float(v['expectedAnnualYieldRate']) > yieldrate and v['productLimit'] < (endday - datetime.today()).days:
+                    if not v['productId'] in records:
+                        print("hdfax - hit -- " + desc)
+                        records[v['productId']] = v
+                        #mailhelper.sendmail(mailto, 'AJ理财通知', '恒大金服 -- {:.2f}% | {}天 | {:,}'.format(float(v['expectedAnnualYieldRate']), v['productLimit'], float(v['investAmount'])))
+        except:
+            index = 1
 
-    s = requests.session()
-    loginData = getLoginData(userid, password)
-    response = s.post('https://www.hdfax.com/user/login', loginData, headers=header)
+def login(session, userid, password):
+    loginData = getLoginData(session, userid, password)
+    response = session.post('https://www.hdfax.com/user/login', loginData, headers=header)
     loginRet = response.json()
-    print(loginRet)
+    #print(loginRet)
     while not loginRet['success']:
         print(loginRet['msg'])
-        imgData = s.get('https://www.hdfax.com/captcha/apply')
+        imgData = session.get('https://www.hdfax.com/captcha/apply')
         imgJson = imgData.json()
         data = base64.b64decode(imgJson['applyPicCaptchaResponse']['captcha'])
         image = Image.open(StringIO(data))
@@ -212,19 +224,26 @@ def start(userid, password, pwd2):
                 print(line)
 
         captchacode = raw_input('captcha code:')
-        loginData = getLoginData(userid, password)
+        loginData = getLoginData(session, userid, password)
         loginData['captchaCode'] = captchacode
         loginData['captchaToken'] = imgJson['applyPicCaptchaResponse']['captchaToken']
-        print(loginData)
-        response = s.post('https://www.hdfax.com/user/login', loginData, headers=header)
+        response = session.post('https://www.hdfax.com/user/login', loginData, headers=header)
         loginRet = response.json()
-        print(loginRet)
 
-    page = s.post('https://www.hdfax.com/user/isLoginMtp', {'useCusMsg':1}, headers=header)
-    print(page.text)
-    page = s.post('https://www.hdfax.com/myasset/overview', headers=header)
-    print(page.text)
-    print(page.json()['assetsHomeInfo']['totalBalance'])
+    page = session.post('https://www.hdfax.com/user/isLoginMtp', {'useCusMsg':1}, headers=header)
+    if page.json()['success']:
+        print('{0} {1}'.format(userid, u"login success"))
+    else:
+        print('{0} {1}'.format(userid, u"login failed"))
+    page = session.post('https://www.hdfax.com/myasset/overview', headers=header)
+    print('{0}{1}'.format(u"balance:",page.json()['assetsHomeInfo']['totalBalance']))
+
+def start(userid, password, pwd2):
+    s = requests.session()
+    login(s, userid, password)
 
     #page = requests.get('https://www.hdfax.com/product/cashier/2/90207247')
     #print(page.text)
+
+    thread.start_new_thread(processHdFax, (s, 6.0, datetime.date(2019,4,1)))
+

@@ -39,7 +39,7 @@ def fetchHdFax(yieldrate, days):
 
 
 def main():
-    thread.start_new_thread(fetchHdFax, (6.0, 65))
+    thread.start_new_thread(fetchHdFax, (6.0, 40))
     while True:
         time.sleep(1)
         
