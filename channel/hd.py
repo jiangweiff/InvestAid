@@ -60,7 +60,7 @@ success:false
 traceNo:"mtp0a0800cf42173083631"
 useCustMsg:false
 """
-
+mailto = ['17538006@qq.com','florashine@163.com',]
 header = { "User-Agent" : "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.13 Safari/537.36",
             "Host": "www.hdfax.com",
            "Referer": "https://www.hdfax.com/",
@@ -196,6 +196,8 @@ def buyProduct(session, productId, orderAmount, paypwd):
                 }
         response = session.post('https://www.hdfax.com/order/pay', payData, headers=header)
         print(response.json()['resultMsg'])
+        mailhelper.sendmail(mailto, 'AJ理财通知', '恒大金服 -- 购买成功 {} | {} | {:,}'.format(productId, response.json()['resultMsg'], float(orderAmount)))
+        
     except Exception, e:
         print e
 
