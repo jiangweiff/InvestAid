@@ -139,7 +139,7 @@ def doRC4(secret, k):
 def mergeTs(e2, ts):
     return ts + e2;
 
-def makeLoginParams(password, json):
+def makePwdParams(password, json):
     h = hashlib.md5()
     h.update(password)
     secret = h.hexdigest()
@@ -160,7 +160,7 @@ def makeLoginParams(password, json):
     
 def getLoginData(session, userid, password):
     page = session.post('https://www.hdfax.com/encryption/getTpSecurityKeys')
-    loginKeys = makeLoginParams(password, page.json())
+    loginKeys = makePwdParams(password, page.json())
     loginData = {
             'byTpk':loginKeys['byTpk'],
             'byKek':loginKeys['byKek'],
@@ -171,13 +171,41 @@ def getLoginData(session, userid, password):
     page = session.post('https://www.hdfax.com/user/hasLoginPwd',{'phoneNumber':userid})
     return loginData
 
-def processHdFax(session, yieldrate, endday):
+def buyProduct(session, productId, orderAmount, paypwd):
+    try:
+        print('start buying {0}'.format(productId))
+        balance = getBalance(session)
+        if balance < float(orderAmount):
+            print('not enough balance -- {0}'.format(balance))
+            return
+        response = session.post('https://www.hdfax.com/order/create', 
+                {'productId':productId,'orderAmount':orderAmount,'couponCode':'','paymentInstrumentType':6}, headers=header)
+        orderInfo = response.json()
+        if not orderInfo['success']:
+            print(orderInfo['resultMsg'])
+            return
+
+        page = session.post('https://www.hdfax.com/encryption/getTpSecurityKeys', headers=header)
+        payKeys = makePwdParams(paypwd, page.json())
+        payData = {
+                'byKek':payKeys['byKek'],
+                'byTpk':payKeys['byTpk'],
+                'orderNo':orderInfo['orderNo'],
+                'couponCode':'',
+                'paymentInstrumentType':6
+                }
+        response = session.post('https://www.hdfax.com/order/pay', payData, headers=header)
+        print(response.json()['resultMsg'])
+    except Exception, e:
+        print e
+
+def processHdFax(session, yieldrate, endday, paypwd):
     print("HDFax thread up")
     records = {}
     index = 1
     while 1:
         try:
-            page = session.get('https://www.hdfax.com/financialproduct/secondaryMarket/list/%s?pageNum=%s&rateOrderBy=0&buyAmtOrderBy=0&productLimit=-1&productLimitOrderBy=1&buyAmtRange=-1'%(index, index))
+            page = session.get('https://www.hdfax.com/financialproduct/secondaryMarket/list/%s?pageNum=%s&rateOrderBy=0&buyAmtOrderBy=0&productLimit=-1&productLimitOrderBy=1&buyAmtRange=-1'%(index, index), headers=header)
             if page.status_code >= 300:
                 print("request status error: "+page.status_code)
                 index = 1
@@ -192,13 +220,18 @@ def processHdFax(session, yieldrate, endday):
             productList = productData['productList']
             for v in productList:
                 desc = '{0}, {1}, {2}'.format(v['productLimit'], v['investAmount'], v['expectedAnnualYieldRate'])
-                if float(v['expectedAnnualYieldRate']) > yieldrate and v['productLimit'] < (endday - datetime.today()).days:
+                if float(v['expectedAnnualYieldRate']) > yieldrate and v['productLimit'] < (endday - datetime.date.today()).days:
                     if not v['productId'] in records:
                         print("hdfax - hit -- " + desc)
                         records[v['productId']] = v
+                        buyProduct(session, v['productId'], v['investAmount'], paypwd)
                         #mailhelper.sendmail(mailto, 'AJ理财通知', '恒大金服 -- {:.2f}% | {}天 | {:,}'.format(float(v['expectedAnnualYieldRate']), v['productLimit'], float(v['investAmount'])))
         except:
             index = 1
+
+def getBalance(session):
+    page = session.post('https://www.hdfax.com/myasset/overview', headers=header)
+    return float(page.json()['assetsHomeInfo']['totalBalance'])
 
 def login(session, userid, password):
     loginData = getLoginData(session, userid, password)
@@ -235,15 +268,11 @@ def login(session, userid, password):
         print('{0} {1}'.format(userid, u"login success"))
     else:
         print('{0} {1}'.format(userid, u"login failed"))
-    page = session.post('https://www.hdfax.com/myasset/overview', headers=header)
-    print('{0}{1}'.format(u"balance:",page.json()['assetsHomeInfo']['totalBalance']))
+    print('{0}{1}'.format(u"balance:",getBalance(session)))
 
-def start(userid, password, pwd2):
+def start(userid, password, paypwd):
     s = requests.session()
     login(s, userid, password)
 
-    #page = requests.get('https://www.hdfax.com/product/cashier/2/90207247')
-    #print(page.text)
-
-    thread.start_new_thread(processHdFax, (s, 6.0, datetime.date(2019,4,1)))
+    thread.start_new_thread(processHdFax, (s, 6.0, datetime.date(2018,4,1), paypwd))
 
