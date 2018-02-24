@@ -196,7 +196,7 @@ def buyProduct(session, productId, orderAmount, paypwd):
                 }
         response = session.post('https://www.hdfax.com/order/pay', payData, headers=header)
         print(response.json()['resultMsg'])
-        mailhelper.sendmail(mailto, 'AJ理财通知', '恒大金服 -- 购买成功 {} | {} | {:,}'.format(productId, response.json()['resultMsg'], float(orderAmount)))
+        mailhelper.sendmail(mailto, 'AJ理财通知', '恒大金服 -- 购买成功 {} | {} | {:,}'.format(productId, response.json()['resultMsg'].encode("utf-8"), float(orderAmount)))
         
     except Exception, e:
         print e
